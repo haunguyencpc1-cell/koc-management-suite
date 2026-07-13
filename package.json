@@ -14,7 +14,8 @@
     "react-dom": "^18.3.1",
     "xlsx": "^0.18.5",
     "lucide-react": "^0.383.0",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "googleapis": "^144.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.5",
