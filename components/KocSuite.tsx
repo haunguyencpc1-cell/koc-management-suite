@@ -293,8 +293,10 @@ export default function KocSuite() {
     return sorted.map((c, i) => ({ ...c, tier: i < cut1 ? "Top" : i < cut2 ? "Mid" : "Low" }));
   }, [master, monthList]);
 
-  const [pasteText, setPasteText] = useState("");
+const [pasteText, setPasteText] = useState("");
   const [pasteMsg, setPasteMsg] = useState<any>(null);
+  const [sheetSyncing, setSheetSyncing] = useState(false);
+
   const syncAssignments = useCallback(async () => {
     const { map, count } = parseAssignmentPaste(pasteText);
     if (count === 0) {
@@ -304,8 +306,28 @@ export default function KocSuite() {
     const merged = { ...assignments, ...map };
     setAssignments(merged);
     await storage.set("koc_assignments", JSON.stringify(merged));
-    setPasteMsg({ type: "ok", text: `Đã đồng bộ ${count} creator từ Google Sheets.` });
+    setPasteMsg({ type: "ok", text: `Đã đồng bộ ${count} creator từ dữ liệu dán.` });
   }, [pasteText, assignments]);
+
+  const syncFromGoogleSheets = useCallback(async () => {
+    setSheetSyncing(true);
+    setPasteMsg(null);
+    try {
+      const res = await fetch("/api/assignments");
+      const data = await res.json();
+      if (!data.ok) {
+        setPasteMsg({ type: "err", text: `Lỗi kết nối Google Sheets: ${data.error}` });
+      } else {
+        const merged = { ...assignments, ...data.map };
+        setAssignments(merged);
+        await storage.set("koc_assignments", JSON.stringify(merged));
+        setPasteMsg({ type: "ok", text: `Đã đồng bộ ${data.count} creator trực tiếp từ Google Sheets.` });
+      }
+    } catch (e) {
+      setPasteMsg({ type: "err", text: "Không kết nối được API." });
+    }
+    setSheetSyncing(false);
+  }, [assignments]);
 
   const exportMasterCsv = () => {
     const header = ["Creator", "Nguoi phu trach", "Tong video", "Tong GMV", "So san pham", "So tuan hoat dong"];
@@ -498,26 +520,40 @@ export default function KocSuite() {
 
         {tab === "master" && (
           <div className="space-y-5">
-            <div className="rounded-sm p-5" style={{ background: "#fff", border: `1px solid ${PAPER_LINE}` }}>
+<div className="rounded-sm p-5" style={{ background: "#fff", border: `1px solid ${PAPER_LINE}` }}>
               <div className="flex items-center gap-2 mb-2">
                 <ClipboardPaste size={15} color={INK} />
-                <span style={{ fontFamily: "Inter", fontSize: 13, fontWeight: 600, color: INK }}>Đồng bộ Người phụ trách từ Google Sheets</span>
+                <span style={{ fontFamily: "Inter", fontSize: 13, fontWeight: 600, color: INK }}>Người phụ trách — Google Sheets</span>
               </div>
-              <div style={{ fontFamily: "Inter", fontSize: 12, color: INK, opacity: 0.6, marginBottom: 10 }}>
-                Bôi đen 2 cột (Creator, Người phụ trách) trên Sheets → Ctrl+C → dán vào ô dưới → bấm Đồng bộ.
-              </div>
-              <textarea
-                value={pasteText}
-                onChange={(e) => setPasteText(e.target.value)}
-                placeholder={"creator_username_1\tThùy Trang\ncreator_username_2\tThái Bình"}
-                rows={5}
-                className="w-full rounded-sm px-3 py-2"
-                style={{ fontFamily: "JetBrains Mono", fontSize: 12, border: `1px solid ${PAPER_LINE}`, background: PAPER, color: INK }}
-              />
-              <div className="flex items-center justify-between mt-2">
-                <button onClick={syncAssignments} className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs" style={{ fontFamily: "Inter", fontWeight: 500, background: INK, color: "#fff" }}>
-                  <RefreshCw size={13} /> Đồng bộ
-                </button>
+
+              <button
+                onClick={syncFromGoogleSheets}
+                disabled={sheetSyncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs mb-3"
+                style={{ fontFamily: "Inter", fontWeight: 500, background: INK, color: "#fff", opacity: sheetSyncing ? 0.6 : 1 }}
+              >
+                <RefreshCw size={13} className={sheetSyncing ? "animate-spin" : ""} />
+                {sheetSyncing ? "Đang đồng bộ..." : "Đồng bộ trực tiếp từ Google Sheets"}
+              </button>
+
+              <details className="mt-1">
+                <summary style={{ fontFamily: "Inter", fontSize: 11, color: INK, opacity: 0.5, cursor: "pointer" }}>Hoặc dán thủ công (nếu API lỗi)</summary>
+                <div className="mt-2">
+                  <textarea
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    placeholder={"creator_username_1\tThùy Trang\ncreator_username_2\tThái Bình"}
+                    rows={4}
+                    className="w-full rounded-sm px-3 py-2"
+                    style={{ fontFamily: "JetBrains Mono", fontSize: 12, border: `1px solid ${PAPER_LINE}`, background: PAPER, color: INK }}
+                  />
+                  <button onClick={syncAssignments} className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs mt-2" style={{ fontFamily: "Inter", fontWeight: 500, background: "#fff", border: `1px solid ${PAPER_LINE}`, color: INK }}>
+                    Đồng bộ dữ liệu dán
+                  </button>
+                </div>
+              </details>
+
+              <div className="flex items-center justify-between mt-3">
                 <span style={{ fontFamily: "JetBrains Mono", fontSize: 11, color: INK, opacity: 0.5 }}>{Object.keys(assignments).length} creator đã gán</span>
               </div>
               {pasteMsg && (
@@ -527,7 +563,6 @@ export default function KocSuite() {
                 </div>
               )}
             </div>
-
             <div className="flex gap-3">
               <StatCard label="Tổng creator" value={master.length} color={NEW_BLUE} />
               <StatCard label="Tổng GMV lũy kế" value={`${fmt(master.reduce((s: number, c: any) => s + c.totalGmv, 0))} đ`} color={GOLD} />
