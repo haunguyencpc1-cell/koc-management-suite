@@ -27,6 +27,13 @@ export async function GET() {
 
     return NextResponse.json({ ok: true, map, count: Object.keys(map).length });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message || "Unknown error" }, { status: 500 });
-  }
-}
+    return NextResponse.json({
+     ok: false,
+     error: e?.response?.data?.error?.message || e.message || "Unknown error",
+     details: {
+       sheetIdUsed: process.env.GOOGLE_SHEET_ID || "MISSING",
+       emailUsed: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "MISSING",
+       hasPrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
+       privateKeyLength: (process.env.GOOGLE_PRIVATE_KEY || "").length,
+     }
+   }, { status: 500 });
