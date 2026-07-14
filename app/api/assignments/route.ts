@@ -8,17 +8,29 @@ export async function GET() {
     const sheetId = (process.env.GOOGLE_SHEET_ID || "").trim();
 
     const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: email,
-        private_key: privateKey,
-      },
+      credentials: { client_email: email, private_key: privateKey },
       scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
     });
 
     const sheets = google.sheets({ version: "v4", auth });
+
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+    const tabTitles = (meta.data.sheets || []).map((s) => s.properties?.title || "");
+
+    const targetTab = tabTitles.find(
+      (t) => t.normalize("NFC").includes("DANH") && t.normalize("NFC").includes("KOC")
+    );
+
+    if (!targetTab) {
+      return NextResponse.json(
+        { ok: false, error: "Không tìm thấy tab phù hợp", availableTabs: tabTitles },
+        { status: 404 }
+      );
+    }
+
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: "DANH MỤC KOC!B2:C",
+      range: `${targetTab}!B2:C`,
     });
 
     const rows = res.data.values || [];
@@ -29,18 +41,22 @@ export async function GET() {
       if (creator && person) map[creator] = person;
     });
 
-    return NextResponse.json({ ok: true, map, count: Object.keys(map).length });
+    return NextResponse.json({ ok: true, map, count: Object.keys(map).length, usedTab: targetTab });
   } catch (e: any) {
-    return NextResponse.json({
-      ok: false,
-      error: e?.response?.data?.error?.message || e.message || "Unknown error",
-      details: {
-        sheetIdUsed: process.env.GOOGLE_SHEET_ID || "MISSING",
-        sheetIdLength: (process.env.GOOGLE_SHEET_ID || "").length,
-        emailUsed: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "MISSING",
-        hasPrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
-        privateKeyLength: (process.env.GOOGLE_PRIVATE_KEY || "").length,
+    return NextResponse.json(
+      {
+        ok: false,
+        error: e?.response?.data?.error?.message || e.message || "Unknown error",
+        details: {
+          sheetIdUsed: process.env.GOOGLE_SHEET_ID || "MISSING",
+          sheetIdLength: (process.env.GOOGLE_SHEET_ID || "").length,
+          emailUsed: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "MISSING",
+          hasPrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
+          privateKeyLength: (process.env.GOOGLE_PRIVATE_KEY || "").length,
+          errorCode: e?.code || e?.response?.status || null,
+        },
       },
-    }, { status: 500 });
+      { status: 500 }
+    );
   }
 }
